@@ -1,0 +1,93 @@
+import cv2
+import numpy as np
+import time
+
+# Set up the video capture (OBS Virtual Camera) and enforce 1920x1080 resolution
+cap = cv2.VideoCapture(2)
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+
+if not cap.isOpened():
+    print("Error: Could not open virtual camera.")
+    exit()
+
+# OpenCV Window setup
+cv2.namedWindow("Thermal Noise Detection", cv2.WINDOW_NORMAL)
+
+# Performance Tracking
+frame_count = 0
+start_time = time.time()
+
+while True:
+    # Capture a frame
+    ret, frame = cap.read()
+    if not ret:
+        print("Failed to grab frame")
+        break
+
+    # Convert frame to grayscale
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+    # Enhance contrast using CLAHE (Faster and better than equalizeHist)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    enhanced_gray = clahe.apply(gray)
+
+    # **🔹 Reduce Sensitivity in Noise Detection**
+    # Adaptive Threshold (Increased block size to 15 for reduced sensitivity)
+    adaptive_threshold = cv2.adaptiveThreshold(
+        enhanced_gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 15, 4
+    )
+
+    # Edge Detection (Increased thresholds for stronger edges)
+    edges = cv2.Canny(enhanced_gray, 20, 80)
+
+    # Combine both masks
+    combined_mask = cv2.bitwise_or(adaptive_threshold, edges)
+
+    # **🔹 Apply Morphological Operations to Reduce Sensitivity**
+    kernel = np.ones((3, 3), np.uint8)
+    combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_OPEN, kernel)  # Removes small noise
+
+    # Overlay detection results
+    highlighted_frame = frame.copy()
+
+    # **🔍 Noise Classification**
+    blurred = cv2.medianBlur(gray, 5)  # Smooth baseline
+    noise_level = cv2.absdiff(gray, blurred)  # Absolute intensity difference
+
+    # **🔴 High Noise (Strong variations)**
+    high_noise_mask = (noise_level > 50).astype(np.uint8) * 255
+    highlighted_frame[high_noise_mask == 255] = [0, 0, 255]  # **Red (High Noise)**
+
+    # **🟡 Low Noise (Moderate variations)**
+    low_noise_mask = ((noise_level > 20) & (noise_level <= 50)).astype(np.uint8) * 255
+    highlighted_frame[low_noise_mask == 255] = [0, 255, 255]  # **Yellow (Low Noise)**
+
+    # 🔥 **Fix Resolution Issues: Resize to 1920x1080**
+    highlighted_frame_resized = cv2.resize(highlighted_frame, (1920, 1080))
+
+    # Heatmap Visualization (Lower Sensitivity)
+    heatmap = cv2.applyColorMap(combined_mask, cv2.COLORMAP_JET)
+    heatmap_resized = cv2.resize(heatmap, (1920, 1080))
+
+    # **Side-by-Side Display**
+    combined_display = np.hstack((highlighted_frame_resized, heatmap_resized))
+
+    # Show results
+    cv2.imshow("Thermal Noise Detection", combined_display)
+
+    frame_count += 1
+
+    # Stop the script if 'q' is pressed
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+# Release resources
+cap.release()
+cv2.destroyAllWindows()
+
+# Calculate and print FPS
+end_time = time.time()
+elapsed_time = end_time - start_time
+fps = frame_count / elapsed_time
+print(f"Processing Speed: {fps:.2f} FPS")
