@@ -1,0 +1,52 @@
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+import os
+
+output_dir = "thermal_output"
+os.makedirs(output_dir, exist_ok=True)
+
+cap = cv2.VideoCapture(2)
+
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1980)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+
+ret, frame = cap.read()
+cap.release()
+
+if not ret:
+    print("Failed to grab frame")
+    exit()
+
+thermal_colored = frame
+
+gray_for_hist = cv2.cvtColor(thermal_colored, cv2.COLOR_BGR2GRAY)
+
+fig, axs = plt.subplots(1, 2, figsize=(14, 6))
+
+axs[0].imshow(cv2.cvtColor(thermal_colored, cv2.COLOR_BGR2RGB))  # Convert BGR to RGB for matplotlib
+axs[0].set_title("Thermal Frame (Color)")
+axs[0].axis('off')
+
+axs[1].hist(gray_for_hist.ravel(), bins=256, range=[0, 256], color='gray')
+axs[1].set_title("Histogram of Pixel Intensity")
+axs[1].set_xlabel("Pixel Intensity")
+axs[1].set_ylabel("Frequency")
+axs[1].set_ylim([0, 40000])
+
+color_frame_path = os.path.join(output_dir, "thermal_frame_color.png")
+cv2.imwrite(color_frame_path, thermal_colored)
+
+existing = [f for f in os.listdir(output_dir) if f.startswith("001NP7_") and f.endswith(".png")] # Change the Serial № of the device
+numbers = [int(f.split("_")[-1].split(".")[0]) for f in existing if f.split("_")[-1].split(".")[0].isdigit()]
+next_number = max(numbers) + 1 if numbers else 1
+
+combined_filename = f"001NP7_{next_number}.png" # Change the Serial № of the device
+combined_path = os.path.join(output_dir, combined_filename)
+
+plt.tight_layout()
+plt.savefig(combined_path)
+plt.close()
+
+print(f"✅ Frame saved to: {color_frame_path}")
+print(f"✅ Combined frame + histogram saved to: {combined_path}")
